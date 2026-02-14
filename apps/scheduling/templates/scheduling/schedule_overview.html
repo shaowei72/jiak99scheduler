@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule Overview - Tour Guide Scheduler{% endblock %}
+
+{% block extra_css %}
+<style>
+    .schedule-table {
+        font-size: 0.85rem;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    .schedule-table th {
+        position: sticky;
+        top: 60px;
+        background-color: #fff;
+        z-index: 10;
+        border-bottom: 2px solid #dee2e6;
+        padding: 12px 8px;
+    }
+    .schedule-table td {
+        text-align: center;
+        vertical-align: middle;
+        padding: 8px 4px;
+        border: 1px solid #dee2e6;
+        min-width: 80px;
+    }
+    .time-slot-header {
+        text-align: left;
+        font-weight: bold;
+        background-color: #f8f9fa;
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        min-width: 150px;
+    }
+    .schedule-table thead th:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 15;
+        background-color: #fff;
+    }
+    .schedule-table thead th:nth-child(2) {
+        position: sticky;
+        left: 30px;
+        z-index: 15;
+        background-color: #fff;
+    }
+    .schedule-table tbody td.time-slot-header {
+        position: sticky;
+        left: 30px;
+        z-index: 5;
+    }
+    .cell-working {
+        background-color: #d1e7dd !important;
+        font-weight: bold;
+        color: #0f5132;
+    }
+    .cell-resting {
+        background-color: #f8f9fa !important;
+        color: #6c757d;
+    }
+    .cell-incompatible {
+        background-color: #e2e3e5 !important;
+        color: #6c757d;
+        font-style: italic;
+    }
+    .guide-header {
+        writing-mode: horizontal-tb;
+        min-width: 100px;
+    }
+    .legend-item {
+        display: inline-block;
+        margin-right: 20px;
+    }
+    .legend-box {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 1px solid #dee2e6;
+        margin-right: 5px;
+        vertical-align: middle;
+    }
+    .table-wrapper {
+        overflow-x: auto;
+        margin-top: 20px;
+    }
+    .date-nav {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+    }
+    .schedule-info {
+        background-color: #e7f1ff;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+    }
+    .feasibility-indicator {
+        width: 30px;
+        text-align: center;
+        font-weight: bold;
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        border-right: 3px solid #dee2e6;
+    }
+    .feasibility-green {
+        background-color: #d1e7dd !important;
+        color: #0f5132;
+    }
+    .feasibility-red {
+        background-color: #f8d7da !important;
+        color: #842029;
+    }
+    .feasibility-yellow {
+        background-color: #fff3cd !important;
+        color: #997404;
+    }
+    .feasibility-gray {
+        background-color: #e2e3e5 !important;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Schedule Overview</h1>
+
+        <!-- Date Navigation -->
+        <div class="date-nav">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                        &laquo; {{ prev_date|date:"M j" }}
+                    </a>
+                </div>
+                <div class="col-md-4 text-center">
+                    <h3 class="mb-0">
+                        {{ view_date|date:"l, F j, Y" }}
+                        {% if view_date == today %}
+                            <span class="badge bg-success">Today</span>
+                        {% endif %}
+                    </h3>
+                    <form method="get" class="mt-2">
+                        <div class="input-group" style="max-width: 300px; margin: 0 auto;">
+                            <input type="date" name="date" class="form-control" value="{{ view_date|date:'Y-m-d' }}">
+                            <button type="submit" class="btn btn-primary">Go</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="col-md-4 text-end">
+                    <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                        {{ next_date|date:"M j" }} &raquo;
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Schedule Info -->
+        {% if daily_schedule %}
+            <div class="schedule-info">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Standby Guide:</strong>
+                        {% if daily_schedule.standby_guide %}
+                            {{ daily_schedule.standby_guide.user.get_full_name }}
+                        {% else %}
+                            <span class="text-danger">Not assigned</span>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <strong>Status:</strong>
+                        {% if daily_schedule.is_published %}
+                            <span class="badge bg-success">Published</span>
+                        {% else %}
+                            <span class="badge bg-warning">Draft</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+                <strong>No schedule created for this date.</strong>
+                Create schedules using the management command or admin panel.
+            </div>
+        {% endif %}
+
+        <!-- Legend -->
+        <div class="mb-3">
+            <strong>Time Slot Status:</strong>
+            <div class="legend-item">
+                <span class="legend-box feasibility-green"></span>
+                ✓ Slot Filled
+            </div>
+            <div class="legend-item">
+                <span class="legend-box feasibility-yellow"></span>
+                ⚠ Not Yet Assigned
+            </div>
+            <div class="legend-item">
+                <span class="legend-box feasibility-red"></span>
+                ✗ Cannot Fill (No Guides)
+            </div>
+            <br>
+            <strong>Guide Status:</strong>
+            <div class="legend-item">
+                <span class="legend-box cell-working"></span>
+                Working
+            </div>
+            <div class="legend-item">
+                <span class="legend-box cell-resting"></span>
+                Resting
+            </div>
+            <div class="legend-item">
+                <span class="legend-box cell-incompatible"></span>
+                Not Available (Guide Type)
+            </div>
+        </div>
+
+        <!-- Schedule Table -->
+        {% if guides and schedule_rows %}
+            <div class="table-wrapper">
+                <table class="table table-bordered schedule-table">
+                    <thead>
+                        <tr>
+                            <th class="feasibility-indicator" title="Slot Status"></th>
+                            <th class="time-slot-header">Time Slot</th>
+                            {% for guide in guides %}
+                            <th class="guide-header">
+                                {{ guide.user.get_full_name|default:guide.user.username }}
+                                <br>
+                                <small class="text-muted">({{ guide.get_guide_type_display }})</small>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in schedule_rows %}
+                        <tr>
+                            {% if row.feasibility.is_assigned %}
+                                <td class="feasibility-indicator feasibility-green" title="Slot is filled">✓</td>
+                            {% elif row.feasibility.can_fill %}
+                                <td class="feasibility-indicator feasibility-yellow" title="Slot can be filled ({{ row.feasibility.eligible_count }} eligible guide(s))">⚠</td>
+                            {% elif row.feasibility %}
+                                <td class="feasibility-indicator feasibility-red" title="No eligible guides available">✗</td>
+                            {% else %}
+                                <td class="feasibility-indicator feasibility-gray">-</td>
+                            {% endif %}
+                            <td class="time-slot-header">
+                                {{ row.time_slot.start_time|date:"g:i A" }} - {{ row.time_slot.end_time|date:"g:i A" }}
+                            </td>
+                            {% for cell in row.cells %}
+                            <td class="cell-{{ cell.status }}">
+                                {% if cell.status == 'working' %}
+                                    <strong>✓</strong>
+                                {% elif cell.status == 'resting' %}
+                                    <span style="opacity: 0.5;">-</span>
+                                {% elif cell.status == 'incompatible' %}
+                                    <small>N/A</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% elif not guides %}
+            <div class="alert alert-info">
+                No active guides found. Create guide profiles in the admin panel.
+            </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="mt-4">
+            {% if daily_schedule %}
+            <div class="alert alert-info">
+                <strong>Auto-Schedule:</strong> To automatically assign guides to unfilled slots, use:
+                <br>
+                <code>python manage.py auto_schedule --date {{ view_date|date:'Y-m-d' }}</code>
+                <br>
+                Or use the "Auto-schedule guides" action in the admin panel for this schedule.
+            </div>
+            {% endif %}
+            <div class="text-center">
+                <a href="/admin/scheduling/dailyschedule/" class="btn btn-primary">
+                    Manage in Admin Panel
+                </a>
+                <a href="{% url 'guide_dashboard' %}" class="btn btn-secondary">
+                    Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
