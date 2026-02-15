@@ -1,0 +1,20 @@
+{% extends "admin/index.html" %}
+{% load static %}
+
+{% block content %}
+<!-- Schedule Manager Quick Access -->
+<div class="module" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; margin-bottom: 20px; border-radius: 8px;">
+    <div style="color: white;">
+        <h2 style="color: white; margin-top: 0;">📅 Schedule Manager</h2>
+        <p style="margin: 10px 0; font-size: 16px;">Unified interface for managing tour guide schedules</p>
+        <a href="/schedule/manager/" class="button" style="background: white; color: #667eea; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">
+            Open Schedule Manager →
+        </a>
+        <a href="/schedule/overview/" class="button" style="background: rgba(255,255,255,0.2); color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: normal; display: inline-block; margin-left: 10px;">
+            Schedule Overview (Read-Only)
+        </a>
+    </div>
+</div>
+
+{{ block.super }}
+{% endblock %}

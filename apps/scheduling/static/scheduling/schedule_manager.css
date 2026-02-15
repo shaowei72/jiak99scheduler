@@ -1,0 +1,136 @@
+/* Schedule Manager Styles */
+
+.date-nav {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.control-bar {
+    background-color: #fff;
+    padding: 15px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}
+
+/* Schedule Table */
+.schedule-table {
+    font-size: 0.85rem;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.schedule-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    padding: 12px 8px;
+    border: 1px solid #dee2e6;
+    text-align: center;
+}
+
+.schedule-table thead th:first-child {
+    text-align: left;
+}
+
+.schedule-table td {
+    padding: 8px;
+    border: 1px solid #dee2e6;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.time-slot-cell {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    text-align: left !important;
+    white-space: nowrap;
+    min-width: 130px;
+}
+
+/* Table container - horizontal scroll only if needed */
+.table-responsive {
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.guide-header {
+    min-width: 120px;
+    text-align: center;
+}
+
+/* Cell States */
+.cell-tour_start {
+    background-color: #198754 !important;
+    color: white;
+    font-weight: 600;
+    border: 2px solid #146c43 !important;
+}
+
+.cell-tour_active {
+    background-color: #d1e7dd !important;
+    color: #0f5132;
+    font-weight: 500;
+    border-left: 3px solid #198754 !important;
+}
+
+.cell-buffer {
+    background-color: #fff3cd !important;
+    color: #997404;
+    font-weight: 500;
+    border: 1px dashed #ffc107 !important;
+}
+
+.cell-working {
+    background-color: #d1e7dd !important;
+    color: #0f5132;
+    font-weight: 500;
+}
+
+.cell-resting {
+    background-color: #f8f9fa !important;
+    color: #6c757d;
+}
+
+.cell-incompatible {
+    background-color: #e2e3e5 !important;
+    color: #999;
+}
+
+.schedule-cell:hover:not(.cell-incompatible) {
+    background-color: #fff3cd !important;
+    transition: background-color 0.2s;
+}
+
+.cell-content {
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+
+/* Status Panel */
+.status-panel {
+    position: sticky;
+    top: 20px;
+}
+
+.status-panel .card-header {
+    background-color: #0d6efd;
+    color: white;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .col-md-9, .col-md-3 {
+        width: 100%;
+    }
+
+    .status-panel {
+        position: static;
+        margin-top: 20px;
+    }
+}
+
+/* Loading States */
+[x-cloak] {
+    display: none !important;
+}

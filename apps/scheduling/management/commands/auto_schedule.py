@@ -54,22 +54,61 @@ class Command(BaseCommand):
         service = SchedulingService()
         results = service.auto_schedule_day(daily_schedule, assign_standby=assign_standby)
 
+        # Calculate guide utilization
+        from apps.scheduling.models import TourSession
+        from apps.guides.models import Guide
+
+        sessions_by_guide = {}
+        assigned_sessions = TourSession.objects.filter(
+            daily_schedule=daily_schedule,
+            assigned_guide__isnull=False
+        ).select_related('assigned_guide')
+
+        for session in assigned_sessions:
+            guide_id = session.assigned_guide.id
+            if guide_id not in sessions_by_guide:
+                sessions_by_guide[guide_id] = []
+            sessions_by_guide[guide_id].append(session)
+
+        guides_used = len(sessions_by_guide)
+        total_guides = Guide.objects.filter(is_active=True).count()
+
         # Display results
         self.stdout.write("\n" + "="*60)
-        self.stdout.write("AUTO-SCHEDULING RESULTS")
+        self.stdout.write("AUTO-SCHEDULING RESULTS (OPTIMIZED)")
         self.stdout.write("="*60)
 
         if results['assigned_count'] > 0:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"✓ Successfully assigned {results['assigned_count']} session(s)"
+                    f"+ Successfully assigned {results['assigned_count']} session(s)"
                 )
             )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"+ Guides used: {guides_used} out of {total_guides} "
+                    f"(Utilization optimized!)"
+                )
+            )
+
+            # Show per-guide breakdown
+            if sessions_by_guide:
+                self.stdout.write("\nPer-guide assignments:")
+                sorted_guides = sorted(
+                    sessions_by_guide.items(),
+                    key=lambda x: len(x[1]),
+                    reverse=True
+                )
+                for guide_id, sessions_list in sorted_guides:
+                    guide = Guide.objects.get(id=guide_id)
+                    self.stdout.write(
+                        f"  - {guide.user.username}: {len(sessions_list)} tours"
+                    )
 
         if results['unfillable_count'] > 0:
             self.stdout.write(
                 self.style.ERROR(
-                    f"✗ Could not fill {results['unfillable_count']} session(s) "
+                    f"- Could not fill {results['unfillable_count']} session(s) "
                     f"(no eligible guides available)"
                 )
             )
@@ -98,7 +137,7 @@ class Command(BaseCommand):
         daily_schedule.refresh_from_db()
         if daily_schedule.standby_guide:
             self.stdout.write(
-                f"\n✓ Standby guide: {daily_schedule.standby_guide.user.get_full_name()}"
+                f"\n+ Standby guide: {daily_schedule.standby_guide.user.get_full_name()}"
             )
         else:
             self.stdout.write(

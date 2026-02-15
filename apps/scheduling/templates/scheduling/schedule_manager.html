@@ -1,0 +1,503 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Schedule Manager{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'scheduling/schedule_manager.css' %}">
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="container-fluid" x-data="scheduleManager()">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Schedule Manager</h1>
+        <a href="/admin/" class="btn btn-outline-secondary">Back to Admin</a>
+    </div>
+
+    <!-- Date Navigation -->
+    <div class="date-nav mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-4">
+                <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-outline-primary">&laquo; {{ prev_date|date:"M j" }}</a>
+            </div>
+            <div class="col-md-4 text-center">
+                <h3 class="mb-2">{{ view_date|date:"l, F j, Y" }}
+                    {% if view_date == today %}<span class="badge bg-success">Today</span>{% endif %}
+                </h3>
+                <form method="get" class="d-inline">
+                    <input type="date" name="date" value="{{ view_date|date:'Y-m-d' }}" class="form-control d-inline" style="width:auto;">
+                    <button type="submit" class="btn btn-sm btn-primary">Go</button>
+                </form>
+            </div>
+            <div class="col-md-4 text-end">
+                <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-outline-primary">{{ next_date|date:"M j" }} &raquo;</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Bar -->
+    <div class="control-bar mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <div class="d-flex gap-2 align-items-center">
+                    <label class="mb-0"><strong>Standby:</strong></label>
+                    <select x-model="standbyGuideId" class="form-select" style="width:200px;">
+                        <option value="">Select guide...</option>
+                        {% for guide in guides %}
+                        <option value="{{ guide.id }}" {% if daily_schedule.standby_guide.id == guide.id %}selected{% endif %}>
+                            {{ guide.user.get_full_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+
+                    <span class="badge" :class="isPublished ? 'bg-success' : 'bg-warning'">
+                        <span x-text="isPublished ? 'Published' : 'Draft'"></span>
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <button @click="autoAssign" class="btn btn-info" :disabled="autoAssigning">
+                    <span x-show="!autoAssigning">⚡ Auto-Assign</span>
+                    <span x-show="autoAssigning">⏳ Assigning...</span>
+                </button>
+                <button @click="exportCSV" class="btn btn-secondary">📄 Export CSV</button>
+                <button @click="saveSchedule" class="btn btn-primary" :disabled="!hasChanges">
+                    💾 Save
+                </button>
+                <button @click="publishSchedule" class="btn btn-success" :disabled="!canPublish">
+                    ✓ Publish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Layout: Grid + Status Panel -->
+    <div class="row">
+        <!-- Schedule Grid -->
+        <div class="col-md-9">
+            <!-- Legend -->
+            <div class="alert alert-info mb-3" role="alert">
+                <strong>Grid Display:</strong> Each row = 30 minutes | Tours start <strong>on the hour</strong> (10am-8pm) | Tour assignment spans <strong>4 cells</strong>: 3 for tour (1.5h) + 1 for buffer (30min)
+                <br>
+                <strong>Legend:</strong>
+                <span class="badge" style="background-color: #198754; color: white;">🚶 START</span> = Tour starts (click to edit)
+                <span class="badge" style="background-color: #d1e7dd; color: #0f5132;">Tour...</span> = Tour in progress
+                <span class="badge" style="background-color: #fff3cd; color: #997404;">⏱️ Break</span> = Mandatory buffer
+                <span class="badge bg-light text-muted">-</span> = Available
+            </div>
+
+            <div class="table-responsive">
+                <table class="schedule-table table table-bordered table-hover">
+
+                    <thead>
+                        <tr>
+                            <th style="width:150px;">Time Slot</th>
+                            {% for guide in guides %}
+                            <th class="guide-header">
+                                {{ guide.user.get_full_name|default:guide.user.username }}
+                                <br><small class="text-muted">({{ guide.get_guide_type_display }})</small>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in schedule_rows %}
+                        <tr>
+                            <td class="time-slot-cell">
+                                <strong>{{ row.time_slot.start_time|date:"g:i A" }}</strong>
+                                <small>-{{ row.time_slot.end_time|date:"g:i A" }}</small>
+                            </td>
+                            {% for cell in row.cells %}
+                            <td class="schedule-cell cell-{{ cell.status }}"
+                                {% if cell.session %}
+                                @click="openEditCell('{{ cell.session.time_slot.id }}', '{{ cell.guide.id }}', {{ cell.session.id }})"
+                                style="cursor:pointer;"
+                                {% elif cell.status == 'tour_active' or cell.status == 'buffer' %}
+                                style="cursor:not-allowed;"
+                                {% else %}
+                                style="cursor:default;"
+                                {% endif %}>
+                                {% if cell.status == 'tour_start' %}
+                                    <div class="cell-content">
+                                        <strong>🚶 START</strong>
+                                        {% if cell.session and cell.session.visitor_count %}
+                                        <br><small>{{ cell.session.visitor_count }}👥</small>
+                                        {% endif %}
+                                    </div>
+                                {% elif cell.status == 'tour_active' %}
+                                    <div class="cell-content">
+                                        <small>Tour...</small>
+                                    </div>
+                                {% elif cell.status == 'buffer' %}
+                                    <div class="cell-content">
+                                        <small>⏱️ Break</small>
+                                    </div>
+                                {% elif cell.status == 'incompatible' %}
+                                    <small class="text-muted">N/A</small>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Status Panel -->
+        <div class="col-md-3">
+            <div class="status-panel card">
+                <div class="card-header">
+                    <strong>Status</strong>
+                </div>
+                <div class="card-body">
+                    <!-- Coverage -->
+                    <h6>Coverage</h6>
+                    <div class="progress mb-3">
+                        <div class="progress-bar" :style="'width: ' + coverage + '%'" x-text="coverage + '%'"></div>
+                    </div>
+                    <p x-text="assignedCount + ' / ' + totalSlots + ' slots filled'"></p>
+                    <p class="text-muted small"><strong x-text="guidesUsedCount"></strong> guides in use (minimize this!)</p>
+
+                    <!-- Issues -->
+                    <h6 class="mt-3">Issues</h6>
+                    <ul class="list-unstyled small">
+                        <li x-show="unassignedCount > 0">⚠️ <span x-text="unassignedCount"></span> unassigned</li>
+                        <li x-show="errorCount > 0">❌ <span x-text="errorCount"></span> errors</li>
+                        <li x-show="!standbyGuideId">⚠️ No standby guide</li>
+                        <li x-show="unassignedCount == 0 && errorCount == 0 && standbyGuideId" class="text-success">✓ All good!</li>
+                    </ul>
+
+                    <!-- Actions -->
+                    <div class="mt-3">
+                        <button @click="clearAll" class="btn btn-sm btn-outline-danger w-100 mb-2">Clear All</button>
+                        <button @click="revertChanges" class="btn btn-sm btn-outline-secondary w-100" :disabled="!hasChanges">Revert Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Tour Session</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div x-show="editSession.loading">Loading...</div>
+
+                    <div x-show="!editSession.loading">
+                        <p class="text-muted"><strong x-text="editSession.timeSlot"></strong></p>
+
+                        <!-- Guide Assignment -->
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Assign Guide:</strong></label>
+                            <select x-model="editSession.guideId" class="form-select">
+                                <option value="">-- Unassigned --</option>
+                                <template x-for="guide in editSession.eligibleGuides" :key="guide.id">
+                                    <option :value="guide.id" x-text="guide.name + ' (' + guide.type + ')'"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <!-- Booking Details -->
+                        <div class="border-top pt-3 mt-3">
+                            <h6>Booking Details</h6>
+
+                            <div class="mb-3">
+                                <label class="form-label">Visitor Count:</label>
+                                <input type="number" x-model="editSession.visitorCount" class="form-control" placeholder="e.g. 25" min="0">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Visitor Type:</label>
+                                <select x-model="editSession.visitorType" class="form-select">
+                                    <option value="">-- Select --</option>
+                                    <option value="local">Local</option>
+                                    <option value="international">International</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Booking Channel:</label>
+                                <select x-model="editSession.bookingChannel" class="form-select">
+                                    <option value="">-- Select --</option>
+                                    <option value="online">Online Platform</option>
+                                    <option value="walkin">Walk-in</option>
+                                    <option value="direct">Direct Sales</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Validation Errors -->
+                        <div x-show="editSession.errors.length > 0" class="alert alert-danger mt-3">
+                            <strong>Validation Errors:</strong>
+                            <ul class="mb-0">
+                                <template x-for="error in editSession.errors" :key="error">
+                                    <li x-text="error"></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" @click="saveEdit" class="btn btn-primary" :disabled="editSession.saving">
+                        <span x-show="!editSession.saving">Save Changes</span>
+                        <span x-show="editSession.saving">Saving...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS (for modals) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- HTMX + Alpine.js -->
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+<script>
+function scheduleManager() {
+    return {
+        standbyGuideId: {{ daily_schedule.standby_guide.id|default:'null' }},
+        isPublished: {{ daily_schedule.is_published|yesno:"true,false" }},
+        hasChanges: false,
+        autoAssigning: false,
+        assignedCount: {{ assigned_count|default:0 }},
+        totalSlots: {{ total_slots|default:24 }},
+        unassignedCount: {{ unassigned_count|default:0 }},
+        guidesUsedCount: {{ guides_used_count|default:0 }},
+        errorCount: 0,
+        viewDate: '{{ view_date|date:"Y-m-d" }}',
+
+        // Edit modal state
+        editSession: {
+            sessionId: null,
+            timeSlot: '',
+            guideId: '',
+            visitorCount: '',
+            visitorType: '',
+            bookingChannel: '',
+            eligibleGuides: [],
+            errors: [],
+            loading: false,
+            saving: false
+        },
+
+        get coverage() {
+            return this.totalSlots > 0 ? Math.round((this.assignedCount / this.totalSlots) * 100) : 0;
+        },
+
+        get canPublish() {
+            return this.assignedCount === this.totalSlots && this.standbyGuideId && this.errorCount === 0;
+        },
+
+        async openEditCell(timeSlotId, guideId, sessionId) {
+            if (!sessionId) return;
+
+            this.editSession.loading = true;
+            this.editSession.errors = [];
+
+            // Open modal
+            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            modal.show();
+
+            try {
+                // Load session data
+                const sessionResp = await fetch(`/schedule/api/session/${sessionId}/`);
+                const sessionData = await sessionResp.json();
+
+                // Load eligible guides
+                const guidesResp = await fetch(`/schedule/api/session/${sessionId}/eligible/`);
+                const guidesData = await guidesResp.json();
+
+                this.editSession.sessionId = sessionId;
+                this.editSession.timeSlot = sessionData.time_slot;
+                this.editSession.guideId = sessionData.assigned_guide_id || '';
+                this.editSession.visitorCount = sessionData.visitor_count || '';
+                this.editSession.visitorType = sessionData.visitor_type || '';
+                this.editSession.bookingChannel = sessionData.booking_channel || '';
+                this.editSession.eligibleGuides = guidesData.guides;
+
+            } catch (error) {
+                console.error('Error loading session:', error);
+                alert('Error loading session data');
+            } finally {
+                this.editSession.loading = false;
+            }
+        },
+
+        async saveEdit() {
+            this.editSession.saving = true;
+            this.editSession.errors = [];
+
+            try {
+                const response = await fetch('/schedule/api/assign/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        session_id: this.editSession.sessionId,
+                        guide_id: this.editSession.guideId || null,
+                        visitor_count: this.editSession.visitorCount || null,
+                        visitor_type: this.editSession.visitorType || null,
+                        booking_channel: this.editSession.bookingChannel || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.errors && data.errors.length > 0) {
+                        this.editSession.errors = data.errors;
+                    } else {
+                        // Close modal and reload
+                        bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                        location.reload();
+                    }
+                } else {
+                    alert('Error: ' + data.error);
+                }
+
+            } catch (error) {
+                console.error('Error saving:', error);
+                alert('Error saving changes');
+            } finally {
+                this.editSession.saving = false;
+            }
+        },
+
+        async autoAssign() {
+            if (!confirm('Run auto-assignment? This will assign guides to all unassigned slots.')) {
+                return;
+            }
+
+            this.autoAssigning = true;
+
+            try {
+                const response = await fetch('/schedule/api/auto-assign/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        date: this.viewDate,
+                        assign_standby: true
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let message = `✓ Assigned ${data.assigned_count} session(s)`;
+                    if (data.unfillable_count > 0) {
+                        message += `\n⚠ Could not fill ${data.unfillable_count} session(s) (no eligible guides)`;
+                    }
+                    alert(message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+
+            } catch (error) {
+                console.error('Error auto-assigning:', error);
+                alert('Error running auto-assignment');
+            } finally {
+                this.autoAssigning = false;
+            }
+        },
+
+        exportCSV() {
+            window.location.href = `/schedule/api/export/${this.viewDate}/`;
+        },
+
+        async publishSchedule() {
+            if (!confirm('Publish this schedule? Guides will be able to see it.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/schedule/api/publish/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        date: this.viewDate
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✓ Schedule published successfully!');
+                    location.reload();
+                } else {
+                    alert('Cannot publish:\n' + (data.errors ? data.errors.join('\n') : data.error));
+                }
+
+            } catch (error) {
+                console.error('Error publishing:', error);
+                alert('Error publishing schedule');
+            }
+        },
+
+        async clearAll() {
+            if (!confirm('Clear all assignments for this day? This cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/schedule/api/clear-all/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        date: this.viewDate
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('All assignments cleared successfully!');
+                    location.reload();  // Refresh to show blank schedule
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error clearing assignments:', error);
+                alert('Error clearing assignments');
+            }
+        },
+
+        revertChanges() {
+            if (confirm('Revert all unsaved changes?')) {
+                location.reload();
+            }
+        },
+
+        getCsrfToken() {
+            return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                   document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+        }
+    }
+}
+</script>
+{% endblock %}

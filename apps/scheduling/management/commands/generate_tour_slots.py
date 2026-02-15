@@ -3,7 +3,7 @@ from apps.scheduling.services import SchedulingService
 
 
 class Command(BaseCommand):
-    help = 'Generate all tour time slots (8:30am-10pm, every 30 minutes, 2-hour tours)'
+    help = 'Generate all tour time slots (10:00am-9:30pm, every 30 minutes, 1.5-hour tours)'
 
     def handle(self, *args, **options):
         service = SchedulingService()

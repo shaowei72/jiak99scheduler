@@ -104,6 +104,39 @@ class TourSession(models.Model):
         related_name='tour_sessions'
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='scheduled')
+
+    # Booking details (NEW - Phase 0)
+    visitor_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of visitors for this tour"
+    )
+
+    VISITOR_TYPE_CHOICES = [
+        ('local', 'Local'),
+        ('international', 'International'),
+    ]
+    visitor_type = models.CharField(
+        max_length=20,
+        choices=VISITOR_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Type of visitors (Local or International)"
+    )
+
+    BOOKING_CHANNEL_CHOICES = [
+        ('online', 'Online Platform'),
+        ('walkin', 'Walk-in'),
+        ('direct', 'Direct Sales'),
+    ]
+    booking_channel = models.CharField(
+        max_length=20,
+        choices=BOOKING_CHANNEL_CHOICES,
+        null=True,
+        blank=True,
+        help_text="How the tour was booked"
+    )
+
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -129,6 +162,27 @@ class TourSession(models.Model):
         from apps.scheduling.services import SchedulingService
         service = SchedulingService()
         return service.validate_session_assignment(self)
+
+    def get_booking_summary(self):
+        """Get a one-line summary of booking details."""
+        if not self.visitor_count:
+            return "No booking details"
+
+        parts = [f"{self.visitor_count} visitors"]
+        if self.visitor_type:
+            parts.append(self.get_visitor_type_display())
+        if self.booking_channel:
+            parts.append(f"via {self.get_booking_channel_display()}")
+
+        return ", ".join(parts)
+
+    def has_booking_details(self):
+        """Check if any booking details are filled."""
+        return bool(
+            self.visitor_count or
+            self.visitor_type or
+            self.booking_channel
+        )
 
 
 class ShiftSwapRequest(models.Model):

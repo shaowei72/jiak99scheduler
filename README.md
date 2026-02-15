@@ -5,7 +5,7 @@ A web-based scheduler application for managing tour guides at an F&B attraction.
 ## Features
 
 - **Guide Management**: Support for full-time, part-time morning, and part-time afternoon guides
-- **Schedule Creation**: Generate monthly schedules with 24 tour sessions per day (2-hour tours every 30 minutes from 8:30am-10pm)
+- **Schedule Creation**: Generate monthly schedules with 21 tour sessions per day (1.5-hour tours every 30 minutes from 10:00am-9:30pm)
 - **Constraint Validation**: Automatic validation of guide type compatibility, break requirements, and availability
 - **Manager Interface**: Powerful Django admin panel with custom actions for schedule management
 - **Guide Portal**: Simple interface for guides to view schedules and mark availability
@@ -43,7 +43,7 @@ A web-based scheduler application for managing tour guides at an F&B attraction.
    python manage.py migrate
    ```
 
-5. Generate tour time slots (creates 24 slots from 8:30am-10pm):
+5. Generate tour time slots (creates 21 slots from 10:00am-9:30pm):
    ```bash
    python manage.py generate_tour_slots
    ```
@@ -128,7 +128,7 @@ A web-based scheduler application for managing tour guides at an F&B attraction.
 
 ## Guide Types
 
-- **Full-time (FT)**: Can work any time slot (8:30am-10pm)
+- **Full-time (FT)**: Can work any time slot (10:00am-9:30pm)
 - **Part-time Morning (PTM)**: Can only work slots ending by 2:30pm
 - **Part-time Afternoon (PTA)**: Can only work slots starting from 2:30pm onwards
 
@@ -137,20 +137,20 @@ A web-based scheduler application for managing tour guides at an F&B attraction.
 The system enforces these constraints automatically:
 
 1. **Guide Type Compatibility**: Guides can only be assigned to time slots compatible with their guide type
-2. **1-Hour Break Requirement**: Guides must have at least 1 hour continuous break between tours
+2. **30-Minute Break Requirement**: Guides must have at least 30 minutes break between tours
 3. **Availability Check**: Guides must be marked as available for the date
 4. **Standby Assignment**: Each day must have one standby guide before publishing
 
 ## Management Commands
 
 ### generate_tour_slots
-Creates all tour time slots (8:30am-10pm, every 30 minutes, 2-hour tours).
+Creates all tour time slots (10:00am-9:30pm, every 30 minutes, 1.5-hour tours).
 
 ```bash
 python manage.py generate_tour_slots
 ```
 
-Run this once during initial setup. Creates 24 time slots.
+Run this once during initial setup. Creates 21 time slots.
 
 ### create_monthly_schedule
 Generates tour sessions for all days in a specified month.
@@ -163,7 +163,7 @@ python manage.py create_monthly_schedule --month 3 --year 2024
 python manage.py create_monthly_schedule --month 3
 ```
 
-Must be run at least 2 weeks in advance. Creates 24 sessions per day.
+Must be run at least 2 weeks in advance. Creates 21 sessions per day.
 
 ### auto_schedule
 Automatically assigns guides to tour sessions for a specific date using an intelligent algorithm.

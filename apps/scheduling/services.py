@@ -12,18 +12,17 @@ class SchedulingService:
     """Service class for scheduling operations and validations."""
 
     def generate_tour_time_slots(self):
-        """Generate all tour time slots (8:30am-10pm, every 30 minutes, 2-hour tours)."""
+        """Generate all tour time slots (10:00am-9:30pm, on the hour, 1.5-hour tours)."""
         slots_created = 0
-        start_hour = 8
-        start_minute = 30
-        tour_duration_minutes = 120
+        start_hour = 10  # Start at 10:00 AM
+        tour_duration_minutes = 90  # 1.5 hours
 
-        # Generate slots from 8:30am to 8:00pm (last tour starts at 8pm, ends at 10pm)
-        current_time = time(start_hour, start_minute)
-        end_time = time(20, 0)  # Last tour starts at 8:00pm
+        # Generate slots from 10:00am to 8:00pm (last tour starts at 8pm, ends at 9:30pm)
+        # Tours start on the hour: 10am, 11am, 12pm, 1pm, 2pm, 3pm, 4pm, 5pm, 6pm, 7pm, 8pm
+        for hour in range(start_hour, 21):  # 10 to 20 (8pm)
+            current_time = time(hour, 0)  # On the hour
 
-        while current_time <= end_time:
-            # Calculate end time (2 hours later)
+            # Calculate end time (1.5 hours later)
             start_dt = datetime.combine(date.today(), current_time)
             end_dt = start_dt + timedelta(minutes=tour_duration_minutes)
 
@@ -35,10 +34,6 @@ class SchedulingService:
 
             if created:
                 slots_created += 1
-
-            # Move to next 30-minute interval
-            start_dt += timedelta(minutes=30)
-            current_time = start_dt.time()
 
         return slots_created
 
@@ -132,7 +127,7 @@ class SchedulingService:
 
     def _check_break_requirement(self, session):
         """
-        Check if guide has at least 1 hour continuous break between tours.
+        Check if guide has at least 30 minutes break between tours.
         Returns list of error messages.
         """
         errors = []
@@ -167,10 +162,10 @@ class SchedulingService:
                 )
                 continue
 
-            # Check if gap is less than 1 hour
-            if gap < 60:
+            # Check if gap is less than 30 minutes
+            if gap < 30:
                 errors.append(
-                    f"Less than 1-hour break between {current_slot} and {other_slot} "
+                    f"Less than 30-minute break between {current_slot} and {other_slot} "
                     f"(gap: {gap} minutes)"
                 )
 
@@ -286,10 +281,69 @@ class SchedulingService:
 
         return can_publish, all_errors
 
+    def _check_consecutive_tours(self, guide_sessions, new_session):
+        """
+        Check how many consecutive tours a guide would have if we add new_session.
+        Returns number of consecutive tours ending with new_session.
+        """
+        if not guide_sessions:
+            return 1
+
+        # Sort by start time
+        sorted_sessions = sorted(guide_sessions + [new_session], key=lambda s: s.time_slot.start_time)
+
+        # Find position of new session
+        new_pos = next(i for i, s in enumerate(sorted_sessions) if s == new_session)
+
+        consecutive = 1
+        # Count backwards from new_session
+        for i in range(new_pos - 1, -1, -1):
+            prev_session = sorted_sessions[i]
+            curr_session = sorted_sessions[i + 1]
+
+            # Check if they're consecutive (curr starts when prev ends + 30-min buffer)
+            gap = self._calculate_time_gap(prev_session.time_slot.end_time, curr_session.time_slot.start_time)
+            if gap == 30:  # Only 30-min buffer between them
+                consecutive += 1
+            else:
+                break  # There's a larger break, not consecutive
+
+        return consecutive
+
+    def _has_one_hour_break(self, guide_sessions):
+        """
+        Check if guide has a continuous 1-hour break (not counting 30-min buffers).
+        Returns True if guide has at least one gap of 90+ minutes between tours.
+
+        The 90 minutes accounts for:
+        - 30 minutes: mandatory buffer after first tour
+        - 60 minutes: actual continuous break
+        """
+        if len(guide_sessions) <= 1:
+            return True  # No break needed for 0-1 tours
+
+        sorted_sessions = sorted(guide_sessions, key=lambda s: s.time_slot.start_time)
+
+        for i in range(len(sorted_sessions) - 1):
+            gap = self._calculate_time_gap(
+                sorted_sessions[i].time_slot.end_time,
+                sorted_sessions[i + 1].time_slot.start_time
+            )
+            if gap >= 90:  # 30-min buffer + 60-min break
+                return True
+
+        return False
+
     def auto_schedule_day(self, daily_schedule, assign_standby=True):
         """
         Automatically assign guides to all sessions for a day.
-        Uses a constraint satisfaction approach to maximize coverage.
+        Optimizes for maximum coverage with minimal guides.
+
+        Constraints:
+        1. Each tour is 1.5 hours with 30-min buffer
+        2. Each guide must have a continuous 1-hour break (90-min gap: 30-min buffer + 60-min break) for 3+ tours
+        3. No more than 2 consecutive tours per guide
+        4. Maximum 4 tours per guide per day
 
         Returns: dict with results including:
             - assigned_count: number of sessions assigned
@@ -337,7 +391,8 @@ class SchedulingService:
         # Sort by number of eligible guides (most constrained first)
         session_options.sort(key=lambda x: x['count'])
 
-        # Assign guides using greedy approach
+        # Assign guides using strategy to MINIMIZE total guides used
+        # Key principle: Maximize each guide's utilization before using another guide
         for option in session_options:
             session = option['session']
             eligible_guides = option['eligible_guides']
@@ -348,12 +403,9 @@ class SchedulingService:
                 results['unfillable_sessions'].append(session.id)
                 continue
 
-            # Choose guide with least assignments so far
-            best_guide = None
-            min_assignments = float('inf')
-
+            # Filter to only guides who can actually take this session (re-validate + new constraints)
+            valid_guides = []
             for guide in eligible_guides:
-                # Re-validate with current assignments
                 temp_session = TourSession(
                     id=session.id,
                     daily_schedule=session.daily_schedule,
@@ -361,13 +413,72 @@ class SchedulingService:
                     assigned_guide=guide
                 )
 
-                # Check if this assignment is still valid
+                # Check basic validation (guide type, availability, 30-min buffer)
                 validation_errors = self.validate_session_assignment(temp_session)
-                if not validation_errors:
-                    assignment_count = len(guide_assignments[guide.id])
-                    if assignment_count < min_assignments:
-                        min_assignments = assignment_count
-                        best_guide = guide
+                if validation_errors:
+                    continue
+
+                # Get guide's currently assigned sessions
+                guide_current_sessions = []
+                for sess_id in guide_assignments[guide.id]:
+                    try:
+                        guide_current_sessions.append(TourSession.objects.get(id=sess_id))
+                    except TourSession.DoesNotExist:
+                        pass
+
+                # CONSTRAINT 1: Max 4 tours per guide per day
+                if len(guide_current_sessions) >= 4:
+                    continue  # Guide already has 4 tours (at maximum)
+
+                # CONSTRAINT 2: Check consecutive tours limit (max 2)
+                consecutive = self._check_consecutive_tours(guide_current_sessions, temp_session)
+                if consecutive > 2:
+                    continue  # Would exceed 2 consecutive tours
+
+                # CONSTRAINT 3: Check 1-hour break requirement (90-min gap)
+                # If guide has 3+ tours, they must have a 90-min gap (30-min buffer + 60-min break)
+                if len(guide_current_sessions) >= 2:
+                    # Check if adding this session would still allow for required break
+                    future_sessions = guide_current_sessions + [temp_session]
+                    has_break = self._has_one_hour_break(future_sessions)
+
+                    # If no 90-min gap yet and would have 3+ tours, reject this assignment
+                    if not has_break and len(future_sessions) >= 3:
+                        continue  # Would have 3+ tours without required 90-min gap
+
+                valid_guides.append(guide)
+
+            if not valid_guides:
+                # No valid guide found
+                results['unfillable_count'] += 1
+                results['unfillable_sessions'].append(session.id)
+                continue
+
+            # Separate into guides already working vs not working
+            guides_with_work = [g for g in valid_guides if len(guide_assignments[g.id]) > 0]
+            guides_without_work = [g for g in valid_guides if len(guide_assignments[g.id]) == 0]
+
+            # PRIORITY 1: Use a guide who's already working today (maximize their utilization)
+            # But prefer guides who haven't hit the consecutive limit yet
+            if guides_with_work:
+                # Sort by: (has room for more tours, number of assignments)
+                def guide_priority(g):
+                    guide_sessions = [TourSession.objects.get(id=sid) for sid in guide_assignments[g.id]]
+                    temp_s = TourSession(
+                        daily_schedule=session.daily_schedule,
+                        time_slot=session.time_slot,
+                        assigned_guide=g
+                    )
+                    consecutive = self._check_consecutive_tours(guide_sessions, temp_s)
+                    # Prioritize guides who aren't at consecutive limit, then by assignment count
+                    return (consecutive < 2, len(guide_assignments[g.id]))
+
+                best_guide = max(guides_with_work, key=guide_priority)
+            # PRIORITY 2: Only use a new guide if no working guide can take it
+            elif guides_without_work:
+                best_guide = guides_without_work[0]
+            else:
+                best_guide = None
 
             if best_guide:
                 # Assign the guide
@@ -376,7 +487,7 @@ class SchedulingService:
                 guide_assignments[best_guide.id].append(session.id)
                 results['assigned_count'] += 1
             else:
-                # No valid guide found
+                # Should not reach here, but handle it
                 results['unfillable_count'] += 1
                 results['unfillable_sessions'].append(session.id)
 
