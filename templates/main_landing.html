@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Jiak99 - Main Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 4rem 0;
+        margin: -20px -15px 3rem -15px;
+        text-align: center;
+    }
+    .main-card {
+        transition: transform 0.3s, box-shadow 0.3s;
+        height: 100%;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .main-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+    }
+    .main-card .card-body {
+        padding: 3rem 2rem;
+        text-align: center;
+    }
+    .main-icon {
+        font-size: 5rem;
+        margin-bottom: 1.5rem;
+        display: block;
+    }
+    .main-card h2 {
+        margin-bottom: 1rem;
+        font-weight: 600;
+    }
+    .main-card p {
+        color: #6c757d;
+        margin-bottom: 2rem;
+    }
+    .main-card .btn {
+        font-size: 1.1rem;
+        padding: 0.75rem 2rem;
+    }
+    .card-schedule {
+        border-left: 5px solid #667eea;
+    }
+    .card-admin {
+        border-left: 5px solid #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="hero-section">
+    <h1 class="display-3 mb-3">Welcome to Jiak99 Planner</h1>
+    <p class="lead mb-0">Manager Dashboard - Scheduling & Staff Management</p>
+</div>
+
+<!-- Main Navigation Cards -->
+<div class="row">
+    <!-- Schedule Management Card -->
+    <div class="col-md-6 mb-4">
+        <div class="card main-card card-schedule">
+            <div class="card-body">
+                <span class="main-icon">📅</span>
+                <h2>Schedule Management</h2>
+                <p>
+                    Manage tour guide schedules and restaurant staff shifts.
+                    View, edit, and publish schedules for optimal operations.
+                </p>
+                <a href="{% url 'schedule_dashboard' %}" class="btn btn-primary btn-lg">
+                    Open Schedule Manager
+                </a>
+            </div>
+            <div class="card-footer bg-light">
+                <small class="text-muted">
+                    <strong>Includes:</strong> Tour Guide Scheduler, Restaurant Staff Scheduler, Timeline & Grid Views
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Card -->
+    <div class="col-md-6 mb-4">
+        <div class="card main-card card-admin">
+            <div class="card-body">
+                <span class="main-icon">⚙️</span>
+                <h2>Admin Panel</h2>
+                <p>
+                    Access Django admin panel for comprehensive system management.
+                    Manage users, staff, guides, and system settings.
+                </p>
+                <a href="/admin/" class="btn btn-danger btn-lg">
+                    Open Admin Panel
+                </a>
+            </div>
+            <div class="card-footer bg-light">
+                <small class="text-muted">
+                    <strong>Includes:</strong> User Management, Staff & Guide Profiles, System Configuration
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Info Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Quick Navigation Tips</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>📅 Schedule Management</h6>
+                        <ul class="small">
+                            <li><strong>Tour Guides:</strong> Manage 11 daily tours (10am-8pm) with automatic buffer periods</li>
+                            <li><strong>Restaurant Staff:</strong> Schedule kitchen and serving staff with coverage validation</li>
+                            <li><strong>Multiple Views:</strong> Timeline, Grid, and Overview modes available</li>
+                            <li><strong>Auto-Scheduling:</strong> Intelligent algorithms for optimal staff assignments</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>⚙️ Admin Panel</h6>
+                        <ul class="small">
+                            <li><strong>User Management:</strong> Create and manage user accounts</li>
+                            <li><strong>Staff Profiles:</strong> Add tour guides and restaurant staff</li>
+                            <li><strong>Settings:</strong> Configure system parameters and preferences</li>
+                            <li><strong>Reports:</strong> Access detailed reports and analytics</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Bar -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info mb-0">
+            <strong>👤 Logged in as:</strong> {{ user.get_full_name|default:user.username }}
+            {% if user.is_staff %}
+            <span class="badge bg-success ms-2">Staff</span>
+            {% endif %}
+            {% if user.is_superuser %}
+            <span class="badge bg-danger ms-2">Superuser</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

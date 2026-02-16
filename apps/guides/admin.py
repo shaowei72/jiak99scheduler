@@ -2,26 +2,61 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 from apps.guides.models import Guide, GuideAvailability
+from apps.scheduling.models import RestaurantStaff as BaseRestaurantStaff
 
 
 class GuideInline(admin.StackedInline):
     model = Guide
-    can_delete = False
-    verbose_name_plural = 'Guide Profile'
+    can_delete = True
+    verbose_name_plural = 'Guide Profile (Optional - only fill if this user is a tour guide)'
     fields = ['guide_type', 'phone', 'is_active']
+    extra = 0
+    max_num = 1
+
+    def has_add_permission(self, request, obj=None):
+        # Only show "Add another" if no guide profile exists
+        if obj and hasattr(obj, 'guide_profile'):
+            return False
+        return True
+
+
+class RestaurantStaffInline(admin.StackedInline):
+    model = BaseRestaurantStaff
+    can_delete = True
+    verbose_name_plural = 'Restaurant Staff Profile (Optional - only fill if this user is kitchen/serving staff)'
+    fields = ['staff_type', 'is_active', 'hire_date']
+    extra = 0
+    max_num = 1
+
+    def has_add_permission(self, request, obj=None):
+        # Only show "Add another" if no restaurant staff profile exists
+        if obj and hasattr(obj, 'restaurant_staff'):
+            return False
+        return True
 
 
 class CustomUserAdmin(UserAdmin):
-    inlines = [GuideInline]
-    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_guide_type']
-    list_filter = ['is_staff', 'is_superuser', 'is_active', 'guide_profile__guide_type']
+    inlines = [GuideInline, RestaurantStaffInline]
+    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_profile_type']
+    list_filter = ['is_staff', 'is_superuser', 'is_active']
 
-    def get_guide_type(self, obj):
+    def get_profile_type(self, obj):
+        profiles = []
         try:
-            return obj.guide_profile.get_guide_type_display()
+            guide_type = obj.guide_profile.get_guide_type_display()
+            profiles.append(f"Guide: {guide_type}")
         except Guide.DoesNotExist:
-            return '-'
-    get_guide_type.short_description = 'Guide Type'
+            pass
+
+        try:
+            staff_type = obj.restaurant_staff.get_staff_type_display()
+            profiles.append(f"Staff: {staff_type}")
+        except BaseRestaurantStaff.DoesNotExist:
+            pass
+
+        return ', '.join(profiles) if profiles else 'No profile'
+
+    get_profile_type.short_description = 'Profile Type'
 
 
 # Unregister the default User admin and register our custom one

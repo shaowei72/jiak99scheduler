@@ -24,6 +24,26 @@ class Guide(models.Model):
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} ({self.get_guide_type_display()})"
 
+    def clean(self):
+        """Validate that user doesn't already have a RestaurantStaff profile."""
+        from apps.scheduling.models import RestaurantStaff
+
+        if self.user_id:
+            try:
+                RestaurantStaff.objects.get(user=self.user)
+                raise ValidationError(
+                    f"User '{self.user.get_full_name() or self.user.username}' already has a Restaurant Staff profile. "
+                    "A user cannot be both a Tour Guide and Restaurant Staff. "
+                    "Please remove the Restaurant Staff profile first or choose a different user."
+                )
+            except RestaurantStaff.DoesNotExist:
+                pass  # Good, no conflict
+
+    def save(self, *args, **kwargs):
+        """Override save to run validation."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def can_work_timeslot(self, timeslot):
         """Check if guide type is compatible with time slot."""
         from datetime import time

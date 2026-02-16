@@ -10,7 +10,9 @@
       "Bash(python manage.py:*)",
       "Bash(ls:*)",
       "Bash(apps/scheduling/api_views.py:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(\"C:\\\\Users\\\\P1251354\\\\LocalDev\\\\Jiak99_App01\\\\apps\\\\scheduling\\\\templatetags\\\\scheduling_filters.py\":*)"
     ]
   }
 }

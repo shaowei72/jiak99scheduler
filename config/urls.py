@@ -17,15 +17,17 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
+from config import views
 
 # Customize admin site
-admin.site.site_header = "Tour Guide Scheduler Administration"
-admin.site.site_title = "Tour Guide Scheduler Admin"
-admin.site.index_title = "Welcome to Tour Guide Scheduler"
+admin.site.site_header = "Jiak99 Planner - Manager Administration"
+admin.site.site_title = "Jiak99 Planner Admin"
+admin.site.index_title = "Manager Dashboard"
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('guides/', include('apps.guides.urls')),
     path('schedule/', include('apps.scheduling.urls')),
-    path('', lambda request: redirect('guide_dashboard')),
+    path('main/', views.main_landing, name='main_landing'),
+    path('', lambda request: redirect('main_landing')),
 ]

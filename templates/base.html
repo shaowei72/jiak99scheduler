@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Tour Guide Scheduler{% endblock %}</title>
+    <title>{% block title %}Jiak99 Planner - Manager Dashboard{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -24,30 +24,20 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'guide_dashboard' %}">Tour Guide Scheduler</a>
+            <a class="navbar-brand" href="{% url 'main_landing' %}">Jiak99 Planner</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    {% if user.is_authenticated %}
+                    {% if user.is_staff %}
+                        <!-- Manager-only navigation -->
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'guide_dashboard' %}">Dashboard</a>
+                            <a class="nav-link" href="{% url 'schedule_dashboard' %}">📅 Schedule Management</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{% url 'my_schedule' %}">My Schedule</a>
+                            <a class="nav-link" href="/admin/">⚙️ Admin</a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'mark_availability' %}">Mark Availability</a>
-                        </li>
-                        {% if user.is_staff %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'schedule_overview' %}">Schedule Overview</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="/admin/">Admin Panel</a>
-                        </li>
-                        {% endif %}
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">

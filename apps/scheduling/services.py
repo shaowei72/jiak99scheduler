@@ -544,3 +544,382 @@ class SchedulingService:
             }
 
         return feasibility
+
+
+# ============================================================================
+# RESTAURANT STAFF SCHEDULING SERVICE
+# ============================================================================
+
+class RestaurantSchedulingService:
+    """Service class for restaurant staff scheduling operations."""
+
+    # Optimal shift patterns (Pattern A: Mixed 4h + 8h shifts)
+    SHIFT_PATTERN_MIXED = [
+        {'start': time(10, 0), 'end': time(18, 0), 'duration': 8},  # Full day - opening
+        {'start': time(10, 0), 'end': time(14, 0), 'duration': 4},  # Half day - lunch rush
+        {'start': time(13, 30), 'end': time(21, 30), 'duration': 8},  # Full day - closing
+        {'start': time(17, 30), 'end': time(21, 30), 'duration': 4},  # Half day - dinner rush
+    ]
+
+    # Alternative pattern (Pattern B: All 8h shifts - simpler but less efficient)
+    SHIFT_PATTERN_ALL_8H = [
+        {'start': time(10, 0), 'end': time(18, 0), 'duration': 8},
+        {'start': time(10, 0), 'end': time(18, 0), 'duration': 8},
+        {'start': time(13, 30), 'end': time(21, 30), 'duration': 8},
+        {'start': time(13, 30), 'end': time(21, 30), 'duration': 8},
+    ]
+
+    def generate_shifts_for_date(self, target_date):
+        """Generate shift templates for a specific date (without assignment)."""
+        from apps.scheduling.models import DailyRestaurantSchedule, StaffShift
+
+        # Get or create daily schedule
+        daily_schedule, created = DailyRestaurantSchedule.objects.get_or_create(
+            date=target_date
+        )
+
+        shifts_created = 0
+
+        # Create shifts for kitchen staff (using mixed pattern)
+        for pattern in self.SHIFT_PATTERN_MIXED:
+            shift, created = StaffShift.objects.get_or_create(
+                daily_schedule=daily_schedule,
+                start_time=pattern['start'],
+                end_time=pattern['end'],
+                duration_hours=pattern['duration'],
+                staff=None  # Unassigned
+            )
+            if created:
+                shifts_created += 1
+
+        # Create shifts for serving staff (using mixed pattern)
+        for pattern in self.SHIFT_PATTERN_MIXED:
+            shift, created = StaffShift.objects.get_or_create(
+                daily_schedule=daily_schedule,
+                start_time=pattern['start'],
+                end_time=pattern['end'],
+                duration_hours=pattern['duration'],
+                staff=None  # Unassigned
+            )
+            if created:
+                shifts_created += 1
+
+        return shifts_created, daily_schedule
+
+    def get_available_staff(self, target_date, staff_type):
+        """
+        Get available staff for a specific date and type.
+
+        Args:
+            target_date: Date to check availability
+            staff_type: 'kitchen' or 'serving'
+
+        Returns:
+            QuerySet of available RestaurantStaff
+        """
+        from apps.scheduling.models import RestaurantStaff, StaffAvailability
+
+        # Get all active staff of this type
+        staff_qs = RestaurantStaff.objects.filter(
+            is_active=True,
+            staff_type=staff_type
+        )
+
+        # Exclude staff marked as unavailable
+        unavailable_staff_ids = StaffAvailability.objects.filter(
+            date=target_date,
+            is_available=False
+        ).values_list('staff_id', flat=True)
+
+        staff_qs = staff_qs.exclude(id__in=unavailable_staff_ids)
+
+        # Exclude staff already assigned to a shift on this date
+        from apps.scheduling.models import StaffShift
+        assigned_staff_ids = StaffShift.objects.filter(
+            daily_schedule__date=target_date,
+            staff__isnull=False
+        ).values_list('staff_id', flat=True)
+
+        staff_qs = staff_qs.exclude(id__in=assigned_staff_ids)
+
+        return staff_qs.order_by('user__first_name', 'user__last_name')
+
+    def auto_schedule_day(self, daily_schedule, pattern='mixed'):
+        """
+        Auto-assign staff to all shifts for a day.
+
+        Optimizes for minimum staff count while maintaining coverage.
+
+        Args:
+            daily_schedule: DailyRestaurantSchedule instance
+            pattern: 'mixed' (default) or 'all_8h'
+
+        Returns:
+            dict with results:
+                - kitchen_assigned: number of kitchen staff assigned
+                - serving_assigned: number of serving staff assigned
+                - total_staff: total staff assigned
+                - unfillable_count: shifts that couldn't be filled
+                - errors: list of error messages
+        """
+        from apps.scheduling.models import StaffShift, RestaurantStaff
+
+        results = {
+            'kitchen_assigned': 0,
+            'serving_assigned': 0,
+            'total_staff': 0,
+            'unfillable_count': 0,
+            'unfillable_shifts': [],
+            'errors': []
+        }
+
+        target_date = daily_schedule.date
+
+        # Select shift pattern
+        if pattern == 'all_8h':
+            shift_patterns = self.SHIFT_PATTERN_ALL_8H
+        else:
+            shift_patterns = self.SHIFT_PATTERN_MIXED
+
+        # Clear existing assignments for this day
+        StaffShift.objects.filter(daily_schedule=daily_schedule).delete()
+
+        # Get all available kitchen staff
+        available_kitchen_staff = list(self.get_available_staff(target_date, 'kitchen'))
+
+        if len(available_kitchen_staff) < 4:
+            results['errors'].append(
+                f"Insufficient kitchen staff: need 4, have {len(available_kitchen_staff)}"
+            )
+            results['unfillable_count'] += (4 - len(available_kitchen_staff))
+
+        # Assign kitchen staff (one staff per shift, no overlaps)
+        kitchen_staff_used = set()
+        for i, pattern_def in enumerate(shift_patterns):
+            # Find next available kitchen staff
+            assigned = False
+            for staff in available_kitchen_staff:
+                if staff.id not in kitchen_staff_used:
+                    StaffShift.objects.create(
+                        daily_schedule=daily_schedule,
+                        staff=staff,
+                        start_time=pattern_def['start'],
+                        end_time=pattern_def['end'],
+                        duration_hours=pattern_def['duration']
+                    )
+                    kitchen_staff_used.add(staff.id)
+                    results['kitchen_assigned'] += 1
+                    assigned = True
+                    break
+
+            if not assigned:
+                # Create unassigned shift
+                StaffShift.objects.create(
+                    daily_schedule=daily_schedule,
+                    staff=None,
+                    start_time=pattern_def['start'],
+                    end_time=pattern_def['end'],
+                    duration_hours=pattern_def['duration']
+                )
+                results['unfillable_shifts'].append({
+                    'type': 'kitchen',
+                    'start': pattern_def['start'],
+                    'end': pattern_def['end']
+                })
+
+        # Get all available serving staff
+        available_serving_staff = list(self.get_available_staff(target_date, 'serving'))
+
+        if len(available_serving_staff) < 4:
+            results['errors'].append(
+                f"Insufficient serving staff: need 4, have {len(available_serving_staff)}"
+            )
+            results['unfillable_count'] += (4 - len(available_serving_staff))
+
+        # Assign serving staff (one staff per shift, no overlaps)
+        serving_staff_used = set()
+        for i, pattern_def in enumerate(shift_patterns):
+            # Find next available serving staff
+            assigned = False
+            for staff in available_serving_staff:
+                if staff.id not in serving_staff_used:
+                    StaffShift.objects.create(
+                        daily_schedule=daily_schedule,
+                        staff=staff,
+                        start_time=pattern_def['start'],
+                        end_time=pattern_def['end'],
+                        duration_hours=pattern_def['duration']
+                    )
+                    serving_staff_used.add(staff.id)
+                    results['serving_assigned'] += 1
+                    assigned = True
+                    break
+
+            if not assigned:
+                # Create unassigned shift
+                StaffShift.objects.create(
+                    daily_schedule=daily_schedule,
+                    staff=None,
+                    start_time=pattern_def['start'],
+                    end_time=pattern_def['end'],
+                    duration_hours=pattern_def['duration']
+                )
+                results['unfillable_shifts'].append({
+                    'type': 'serving',
+                    'start': pattern_def['start'],
+                    'end': pattern_def['end']
+                })
+
+        results['total_staff'] = results['kitchen_assigned'] + results['serving_assigned']
+
+        return results
+
+    def validate_coverage(self, daily_schedule):
+        """
+        Validate that minimum coverage (2 kitchen + 2 serving) is met at all times.
+
+        Args:
+            daily_schedule: DailyRestaurantSchedule instance
+
+        Returns:
+            dict with validation results:
+                - is_valid: True if coverage requirements met
+                - gaps: list of time periods with insufficient coverage
+                - coverage_by_hour: dict of hour -> {kitchen: count, serving: count}
+        """
+        from apps.scheduling.models import StaffShift
+
+        # Operating hours: 10:00 AM - 9:30 PM
+        # Check coverage for each 30-minute period
+
+        validation = {
+            'is_valid': True,
+            'gaps': [],
+            'coverage_by_hour': {}
+        }
+
+        # Get all assigned shifts for this day
+        shifts = StaffShift.objects.filter(
+            daily_schedule=daily_schedule,
+            staff__isnull=False
+        ).select_related('staff')
+
+        # Check coverage for each half-hour period
+        # Operating hours: 10:00 AM - 9:30 PM
+        # Check coverage up to 9:00 PM (last 30-min period before closing)
+        current_time = time(10, 0)
+        end_time = time(21, 0)  # Check up to 9:00 PM (not including 9:30 PM closing time)
+
+        while current_time <= end_time:
+            # Count kitchen and serving staff working at this time
+            kitchen_count = 0
+            serving_count = 0
+
+            for shift in shifts:
+                # Check if this shift covers current_time
+                if shift.start_time <= current_time < shift.end_time:
+                    if shift.staff.staff_type == 'kitchen':
+                        kitchen_count += 1
+                    elif shift.staff.staff_type == 'serving':
+                        serving_count += 1
+
+            # Store coverage
+            time_key = current_time.strftime('%H:%M')
+            validation['coverage_by_hour'][time_key] = {
+                'kitchen': kitchen_count,
+                'serving': serving_count
+            }
+
+            # Check if minimum coverage met
+            if kitchen_count < 2 or serving_count < 2:
+                validation['is_valid'] = False
+                validation['gaps'].append({
+                    'time': time_key,
+                    'kitchen': kitchen_count,
+                    'serving': serving_count,
+                    'missing_kitchen': max(0, 2 - kitchen_count),
+                    'missing_serving': max(0, 2 - serving_count)
+                })
+
+            # Move to next 30-minute period
+            current_dt = datetime.combine(date.today(), current_time)
+            next_dt = current_dt + timedelta(minutes=30)
+            current_time = next_dt.time()
+
+            # Stop at 9:30 PM
+            if current_time > time(21, 30):
+                break
+
+        return validation
+
+    def get_schedule_summary(self, daily_schedule):
+        """
+        Get a summary of the schedule for a specific day.
+
+        Returns:
+            dict with summary statistics
+        """
+        from apps.scheduling.models import StaffShift
+
+        shifts = StaffShift.objects.filter(
+            daily_schedule=daily_schedule
+        ).select_related('staff')
+
+        summary = {
+            'total_shifts': shifts.count(),
+            'assigned_shifts': shifts.filter(staff__isnull=False).count(),
+            'unassigned_shifts': shifts.filter(staff__isnull=True).count(),
+            'kitchen_staff': shifts.filter(
+                staff__staff_type='kitchen',
+                staff__isnull=False
+            ).values('staff').distinct().count(),
+            'serving_staff': shifts.filter(
+                staff__staff_type='serving',
+                staff__isnull=False
+            ).values('staff').distinct().count(),
+            'total_staff': shifts.filter(
+                staff__isnull=False
+            ).values('staff').distinct().count(),
+            'full_day_shifts': shifts.filter(duration_hours=8).count(),
+            'half_day_shifts': shifts.filter(duration_hours=4).count(),
+            'total_hours': sum(shift.duration_hours for shift in shifts if shift.staff),
+        }
+
+        # Add coverage validation
+        validation = self.validate_coverage(daily_schedule)
+        summary['coverage_valid'] = validation['is_valid']
+        summary['coverage_gaps'] = len(validation['gaps'])
+
+        return summary
+
+    def can_publish_schedule(self, daily_schedule):
+        """
+        Check if a schedule can be published.
+
+        Returns:
+            tuple (can_publish: bool, errors: list)
+        """
+        errors = []
+
+        # Check coverage
+        validation = self.validate_coverage(daily_schedule)
+        if not validation['is_valid']:
+            for gap in validation['gaps']:
+                errors.append(
+                    f"Insufficient coverage at {gap['time']}: "
+                    f"Kitchen: {gap['kitchen']}/2, Serving: {gap['serving']}/2"
+                )
+
+        # Check for unassigned shifts
+        from apps.scheduling.models import StaffShift
+        unassigned = StaffShift.objects.filter(
+            daily_schedule=daily_schedule,
+            staff__isnull=True
+        ).count()
+
+        if unassigned > 0:
+            errors.append(f"{unassigned} shift(s) not assigned to any staff")
+
+        can_publish = len(errors) == 0
+
+        return can_publish, errors

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% load static %}
+{% load scheduling_filters %}
+
+{% block title %}Kitchen & Serving Staff Grid{% endblock %}
+
+{% block extra_css %}
+<style>
+    .staff-grid-table {
+        font-size: 0.85rem;
+    }
+    .staff-grid-table th,
+    .staff-grid-table td {
+        padding: 8px 4px;
+        text-align: center;
+        vertical-align: middle;
+        min-width: 60px;
+    }
+    .staff-grid-table .staff-name-col {
+        min-width: 150px;
+        text-align: left;
+        font-weight: 500;
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 10;
+    }
+    .staff-grid-table thead th {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 20;
+    }
+    .staff-grid-table thead th.staff-name-col {
+        z-index: 30;
+    }
+    .table-responsive {
+        max-height: 80vh;
+        overflow: auto;
+    }
+    .shift-cell {
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .shift-continued {
+        font-size: 1.2rem;
+    }
+    .section-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 12px;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        border-left: 4px solid #0d6efd;
+        font-weight: 600;
+    }
+    .section-header.kitchen {
+        border-left-color: #dc3545;
+    }
+    .section-header.serving {
+        border-left-color: #0d6efd;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>🍽️ Kitchen & Serving Staff Grid</h1>
+        <div>
+            <a href="{% url 'restaurant_schedule_manager' %}?date={{ view_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                Timeline View
+            </a>
+            <a href="/admin/" class="btn btn-outline-secondary">Back to Admin</a>
+        </div>
+    </div>
+
+    <!-- Date Navigation -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                        &laquo; {{ prev_date|date:"M j" }}
+                    </a>
+                </div>
+                <div class="col-md-4 text-center">
+                    <h3 class="mb-2">
+                        {{ view_date|date:"l, F j, Y" }}
+                        {% if view_date == today %}
+                        <span class="badge bg-success">Today</span>
+                        {% endif %}
+                    </h3>
+                    <form method="get" class="d-inline">
+                        <input type="date" name="date" value="{{ view_date|date:'Y-m-d' }}"
+                               class="form-control d-inline" style="width:auto;">
+                        <button type="submit" class="btn btn-sm btn-primary">Go</button>
+                    </form>
+                </div>
+                <div class="col-md-4 text-end">
+                    <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                        {{ next_date|date:"M j" }} &raquo;
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="alert alert-info mb-3">
+        <strong>Grid Legend:</strong>
+        <span class="badge bg-danger">Working (Kitchen)</span>
+        <span class="badge bg-primary">Working (Serving)</span>
+        <span class="badge bg-light text-dark">Rest/Not Scheduled</span>
+        <br>
+        <small>Each column represents one hour from 10:00 AM to 10:00 PM. Click on a shift start time for details.</small>
+    </div>
+
+    {% if not daily_schedule %}
+    <div class="alert alert-warning">
+        <strong>No schedule found for this date.</strong>
+        Go to the <a href="{% url 'restaurant_schedule_manager' %}?date={{ view_date|date:'Y-m-d' }}">Timeline View</a>
+        to create and assign shifts.
+    </div>
+    {% endif %}
+
+    <!-- Kitchen Staff Grid -->
+    <div class="section-header kitchen">
+        🍳 KITCHEN STAFF (Minimum 2 at all times)
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm staff-grid-table">
+            <thead>
+                <tr>
+                    <th class="staff-name-col">Staff Member</th>
+                    {% for slot in time_slots %}
+                    <th title="{{ slot.display_12h }}">
+                        {{ slot.hour }}:00
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in kitchen_rows %}
+                <tr>
+                    <td class="staff-name-col">
+                        {{ row.staff.user|display_name }}
+                    </td>
+                    {% for cell in row.cells %}
+                    <td class="{{ cell.class }} {% if cell.shift %}shift-cell{% endif %}"
+                        {% if cell.shift and cell.shift.start_time.hour == forloop.counter0|add:9 %}
+                        title="Shift: {{ cell.shift.start_time|time:'g:i A' }} - {{ cell.shift.end_time|time:'g:i A' }} ({{ cell.shift.duration_hours }}h)"
+                        {% endif %}>
+                        {% if cell.text == '●' %}
+                        <span class="shift-continued">{{ cell.text }}</span>
+                        {% else %}
+                        {{ cell.text }}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ time_slots|length|add:1 }}" class="text-center text-muted">
+                        No kitchen staff members found. Add staff in admin panel.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Serving Staff Grid -->
+    <div class="section-header serving">
+        🍽️ SERVING STAFF (Minimum 2 at all times)
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm staff-grid-table">
+            <thead>
+                <tr>
+                    <th class="staff-name-col">Staff Member</th>
+                    {% for slot in time_slots %}
+                    <th title="{{ slot.display_12h }}">
+                        {{ slot.hour }}:00
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in serving_rows %}
+                <tr>
+                    <td class="staff-name-col">
+                        {{ row.staff.user|display_name }}
+                    </td>
+                    {% for cell in row.cells %}
+                    <td class="{{ cell.class }} {% if cell.shift %}shift-cell{% endif %}"
+                        {% if cell.shift and cell.shift.start_time.hour == forloop.counter0|add:9 %}
+                        title="Shift: {{ cell.shift.start_time|time:'g:i A' }} - {{ cell.shift.end_time|time:'g:i A' }} ({{ cell.shift.duration_hours }}h)"
+                        {% endif %}>
+                        {% if cell.text == '●' %}
+                        <span class="shift-continued">{{ cell.text }}</span>
+                        {% else %}
+                        {{ cell.text }}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ time_slots|length|add:1 }}" class="text-center text-muted">
+                        No serving staff members found. Add staff in admin panel.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="card mt-3">
+        <div class="card-body">
+            <h5 class="card-title">Actions</h5>
+            <a href="{% url 'restaurant_schedule_manager' %}?date={{ view_date|date:'Y-m-d' }}"
+               class="btn btn-primary">
+                Edit Schedule (Timeline View)
+            </a>
+            {% if daily_schedule %}
+            <a href="{% url 'api_restaurant_export_csv' view_date|date:'Y-m-d' %}"
+               class="btn btn-success">
+                Export to CSV
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

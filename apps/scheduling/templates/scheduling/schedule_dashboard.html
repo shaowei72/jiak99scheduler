@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule Dashboard - Jiak99{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+    }
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .module-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    .stat-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        margin: 0.25rem;
+        font-weight: 500;
+    }
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 3rem 0;
+        margin-bottom: 2rem;
+        border-radius: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container">
+            <h1 class="display-4 mb-2">📅 Schedule Management Dashboard</h1>
+            <p class="lead">Manage tour guides and restaurant staff schedules from one central location</p>
+            <p class="mb-0">
+                <span class="badge bg-light text-dark">{{ today|date:"l, F j, Y" }}</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- Quick Stats Overview -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">🎯 Tour Guide Schedule - Today</h5>
+                    {% if tour_stats %}
+                        <div class="d-flex gap-2 flex-wrap">
+                            <span class="stat-badge bg-primary text-white">
+                                {{ tour_stats.assigned }}/{{ tour_stats.total }} Tours Assigned
+                            </span>
+                            {% if tour_stats.unassigned > 0 %}
+                            <span class="stat-badge bg-warning text-dark">
+                                {{ tour_stats.unassigned }} Unassigned
+                            </span>
+                            {% endif %}
+                            {% if tour_stats.published %}
+                            <span class="stat-badge bg-success text-white">Published</span>
+                            {% else %}
+                            <span class="stat-badge bg-secondary text-white">Draft</span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No schedule created for today</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">🍽️ Restaurant Schedule - Today</h5>
+                    {% if restaurant_stats %}
+                        <div class="d-flex gap-2 flex-wrap">
+                            <span class="stat-badge bg-danger text-white">
+                                {{ restaurant_stats.assigned }}/{{ restaurant_stats.total }} Shifts Assigned
+                            </span>
+                            {% if restaurant_stats.unassigned > 0 %}
+                            <span class="stat-badge bg-warning text-dark">
+                                {{ restaurant_stats.unassigned }} Unassigned
+                            </span>
+                            {% endif %}
+                            {% if restaurant_stats.published %}
+                            <span class="stat-badge bg-success text-white">Published</span>
+                            {% else %}
+                            <span class="stat-badge bg-secondary text-white">Draft</span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No schedule created for today</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Cards -->
+    <div class="row mb-4">
+        <!-- Tour Guide Scheduler -->
+        <div class="col-md-6 mb-4">
+            <div class="card dashboard-card border-primary">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">🎯</div>
+                    <h3 class="card-title mb-3">Tour Guide Scheduler</h3>
+                    <p class="card-text text-muted mb-4">
+                        Manage tour guide assignments, view schedules, and assign guides to tour sessions.
+                        Supports 11 daily tours (10am-8pm) with automatic 30-minute buffer periods.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'schedule_manager' %}?date={{ today|date:'Y-m-d' }}"
+                           class="btn btn-primary btn-lg">
+                            📋 Open Schedule Manager
+                        </a>
+                        <a href="{% url 'schedule_overview' %}?date={{ today|date:'Y-m-d' }}"
+                           class="btn btn-outline-primary">
+                            📊 View Overview (Read-Only)
+                        </a>
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <small class="text-muted">
+                        <strong>Features:</strong> Drag-and-drop assignment, auto-scheduling, feasibility checking
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Restaurant Staff Scheduler -->
+        <div class="col-md-6 mb-4">
+            <div class="card dashboard-card border-danger">
+                <div class="card-body text-center p-4">
+                    <div class="module-icon">🍽️</div>
+                    <h3 class="card-title mb-3">Restaurant Staff Scheduler</h3>
+                    <p class="card-text text-muted mb-4">
+                        Schedule kitchen and serving staff shifts. Manage coverage requirements
+                        (minimum 2 staff per role) with 4-hour and 8-hour shift patterns.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'restaurant_schedule_manager' %}?date={{ today|date:'Y-m-d' }}"
+                           class="btn btn-danger btn-lg">
+                            📋 Open Schedule Manager
+                        </a>
+                        <a href="{% url 'kitchen_staff_grid' %}?date={{ today|date:'Y-m-d' }}"
+                           class="btn btn-outline-danger">
+                            📊 View Grid View
+                        </a>
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <small class="text-muted">
+                        <strong>Features:</strong> Timeline & grid views, auto-assignment, coverage validation
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Tools -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">⚙️ Additional Tools</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <h6>🔧 Django Admin</h6>
+                            <p class="text-muted small mb-2">Access the full Django admin panel for detailed management</p>
+                            <a href="/admin/" class="btn btn-sm btn-outline-secondary">Go to Admin Panel</a>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6>📥 Export Schedules</h6>
+                            <p class="text-muted small mb-2">Export schedules to CSV from the individual schedule managers</p>
+                            <span class="badge bg-info">Available in each manager</span>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6>⚡ Auto-Scheduling</h6>
+                            <p class="text-muted small mb-2">Use auto-assign features in each scheduler for optimal assignments</p>
+                            <span class="badge bg-success">One-click scheduling</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <h6 class="alert-heading">💡 Quick Tips</h6>
+                <ul class="mb-0">
+                    <li><strong>Tour Guides:</strong> Use the Schedule Manager for interactive editing or Overview for a read-only grid view</li>
+                    <li><strong>Restaurant Staff:</strong> Switch between Timeline View (visual shifts) and Grid View (hourly breakdown)</li>
+                    <li><strong>Publishing:</strong> Schedules must be published before staff can see them</li>
+                    <li><strong>Auto-Assign:</strong> Both schedulers have intelligent auto-assignment algorithms to save time</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

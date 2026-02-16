@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+{% load static %}
+{% load restaurant_filters %}
+{% load scheduling_filters %}
+
+{% block title %}Restaurant Staff Schedule Manager{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'scheduling/restaurant_schedule_manager.css' %}">
+{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>🍽️ Restaurant Staff Schedule Manager</h1>
+        <div>
+            <a href="{% url 'kitchen_staff_grid' %}?date={{ view_date|date:'Y-m-d' }}" class="btn btn-outline-primary">
+                Grid View
+            </a>
+            <a href="/admin/" class="btn btn-outline-secondary">Back to Admin</a>
+        </div>
+    </div>
+
+    <!-- Date Navigation -->
+    <div class="date-nav mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-4">
+                <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-outline-primary">&laquo; {{ prev_date|date:"M j" }}</a>
+            </div>
+            <div class="col-md-4 text-center">
+                <h3 class="mb-2">{{ view_date|date:"l, F j, Y" }}
+                    {% if view_date == today %}<span class="badge bg-success">Today</span>{% endif %}
+                </h3>
+                <form method="get" class="d-inline">
+                    <input type="date" name="date" value="{{ view_date|date:'Y-m-d' }}" class="form-control d-inline" style="width:auto;">
+                    <button type="submit" class="btn btn-sm btn-primary">Go</button>
+                </form>
+            </div>
+            <div class="col-md-4 text-end">
+                <a href="?date={{ next_date|date:'Y-m-d' }}" class="btn btn-outline-primary">{{ next_date|date:"M j" }} &raquo;</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Bar -->
+    <div class="control-bar mb-3">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge {% if daily_schedule.is_published %}bg-success{% else %}bg-warning{% endif %}">
+                        {% if daily_schedule.is_published %}Published{% else %}Draft{% endif %}
+                    </span>
+                    <span class="text-muted">Operating Hours: 10:00 AM - 9:30 PM</span>
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <button onclick="autoAssign()" class="btn btn-info">
+                    ⚡ Auto-Assign
+                </button>
+                <button onclick="clearAll()" class="btn btn-outline-danger">
+                    🗑️ Clear All
+                </button>
+                <button onclick="publishSchedule()" class="btn btn-success" {% if not coverage_valid %}disabled{% endif %}>
+                    ✓ Publish
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="row">
+        <!-- Schedule Grid -->
+        <div class="col-md-9">
+            <!-- Legend -->
+            <div class="alert alert-info mb-3">
+                <strong>Shift Display:</strong> Each bar represents a shift (4h half-day or 8h full-day) | Operating hours: 10am-9:30pm
+                <br>
+                <strong>Colors:</strong>
+                <span class="badge bg-danger">🍳 Kitchen</span>
+                <span class="badge bg-primary">🍽️ Serving</span>
+                <span class="badge bg-secondary">4h Half</span>
+                <span class="badge bg-info">8h Full</span>
+            </div>
+
+            <!-- Kitchen Staff Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">🍳 Kitchen Staff (Minimum 2 at all times)</h5>
+                </div>
+                <div class="card-body">
+                    {% if kitchen_shifts %}
+                    <div class="timeline-container">
+                        <!-- Time ruler -->
+                        <div class="time-ruler">
+                            <span class="time-mark">10am</span>
+                            <span class="time-mark">12pm</span>
+                            <span class="time-mark">2pm</span>
+                            <span class="time-mark">4pm</span>
+                            <span class="time-mark">6pm</span>
+                            <span class="time-mark">8pm</span>
+                        </div>
+
+                        <!-- Shifts -->
+                        {% for shift in kitchen_shifts %}
+                        <div class="shift-row">
+                            <div class="staff-name">
+                                {% if shift.staff %}
+                                {{ shift.staff.user|display_name }}
+                                {% else %}
+                                <em class="text-muted">Unassigned</em>
+                                {% endif %}
+                            </div>
+                            <div class="shift-timeline">
+                                {% if shift.staff %}
+                                <div class="shift-bar kitchen {% if shift.is_full_day %}full-day{% else %}half-day{% endif %}"
+                                     style="left: {{ shift.start_time|time_to_percent }}%; width: {{ shift.duration_hours|mult:8.47 }}%;"
+                                     onclick="editShift({{ shift.id }})">
+                                    {{ shift.start_time|time:"g:iA" }} - {{ shift.end_time|time:"g:iA" }}
+                                    <span class="duration-badge">{{ shift.duration_hours }}h</span>
+                                </div>
+                                {% else %}
+                                <div class="shift-bar unassigned"
+                                     style="left: {{ shift.start_time|time_to_percent }}%; width: {{ shift.duration_hours|mult:8.47 }}%;">
+                                    {{ shift.start_time|time:"g:iA" }} - {{ shift.end_time|time:"g:iA" }} (Unassigned)
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No kitchen shifts scheduled. Click "Auto-Assign" to generate shifts.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Serving Staff Section -->
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">🍽️ Serving Staff (Minimum 2 at all times)</h5>
+                </div>
+                <div class="card-body">
+                    {% if serving_shifts %}
+                    <div class="timeline-container">
+                        <!-- Time ruler -->
+                        <div class="time-ruler">
+                            <span class="time-mark">10am</span>
+                            <span class="time-mark">12pm</span>
+                            <span class="time-mark">2pm</span>
+                            <span class="time-mark">4pm</span>
+                            <span class="time-mark">6pm</span>
+                            <span class="time-mark">8pm</span>
+                        </div>
+
+                        <!-- Shifts -->
+                        {% for shift in serving_shifts %}
+                        <div class="shift-row">
+                            <div class="staff-name">
+                                {% if shift.staff %}
+                                {{ shift.staff.user|display_name }}
+                                {% else %}
+                                <em class="text-muted">Unassigned</em>
+                                {% endif %}
+                            </div>
+                            <div class="shift-timeline">
+                                {% if shift.staff %}
+                                <div class="shift-bar serving {% if shift.is_full_day %}full-day{% else %}half-day{% endif %}"
+                                     style="left: {{ shift.start_time|time_to_percent }}%; width: {{ shift.duration_hours|mult:8.47 }}%;"
+                                     onclick="editShift({{ shift.id }})">
+                                    {{ shift.start_time|time:"g:iA" }} - {{ shift.end_time|time:"g:iA" }}
+                                    <span class="duration-badge">{{ shift.duration_hours }}h</span>
+                                </div>
+                                {% else %}
+                                <div class="shift-bar unassigned"
+                                     style="left: {{ shift.start_time|time_to_percent }}%; width: {{ shift.duration_hours|mult:8.47 }}%;">
+                                    {{ shift.start_time|time:"g:iA" }} - {{ shift.end_time|time:"g:iA" }} (Unassigned)
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No serving shifts scheduled. Click "Auto-Assign" to generate shifts.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Panel -->
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header">
+                    <strong>Status</strong>
+                </div>
+                <div class="card-body">
+                    <!-- Coverage -->
+                    <h6>Coverage</h6>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Kitchen Staff:</span>
+                            <strong>{{ summary.kitchen_staff }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Serving Staff:</span>
+                            <strong>{{ summary.serving_staff }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Total Staff:</span>
+                            <strong>{{ summary.total_staff }}</strong>
+                        </div>
+                    </div>
+
+                    <!-- Shifts -->
+                    <h6>Shifts</h6>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Total:</span>
+                            <strong>{{ total_shifts }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Assigned:</span>
+                            <strong>{{ assigned_shifts }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Unassigned:</span>
+                            <strong class="{% if unassigned_shifts > 0 %}text-danger{% endif %}">{{ unassigned_shifts }}</strong>
+                        </div>
+                    </div>
+
+                    <!-- Hours -->
+                    <h6>Hours</h6>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Full-day (8h):</span>
+                            <strong>{{ summary.full_day_shifts }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Half-day (4h):</span>
+                            <strong>{{ summary.half_day_shifts }}</strong>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Total hours:</span>
+                            <strong>{{ summary.total_hours }}h</strong>
+                        </div>
+                    </div>
+
+                    <!-- Validation -->
+                    <h6>Validation</h6>
+                    <ul class="list-unstyled small">
+                        {% if coverage_valid %}
+                        <li class="text-success">✓ Coverage requirements met</li>
+                        {% else %}
+                        <li class="text-danger">✗ Coverage gaps found ({{ validation.gaps|length }})</li>
+                        {% endif %}
+
+                        {% if unassigned_shifts > 0 %}
+                        <li class="text-warning">⚠️ {{ unassigned_shifts }} unassigned shift(s)</li>
+                        {% else %}
+                        <li class="text-success">✓ All shifts assigned</li>
+                        {% endif %}
+
+                        {% if coverage_valid and unassigned_shifts == 0 %}
+                        <li class="text-success mt-2"><strong>✓ Ready to publish!</strong></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+           document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+}
+
+function autoAssign() {
+    if (!confirm('Run auto-assignment? This will assign staff to all shifts using the optimal pattern.')) {
+        return;
+    }
+
+    const dateStr = '{{ view_date|date:"Y-m-d" }}';
+
+    fetch('/schedule/api/restaurant/auto-assign/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            date: dateStr,
+            pattern: 'mixed'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function clearAll() {
+    if (!confirm('Clear all shift assignments? This cannot be undone.')) {
+        return;
+    }
+
+    const dateStr = '{{ view_date|date:"Y-m-d" }}';
+
+    fetch('/schedule/api/restaurant/clear-all/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            date: dateStr
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function publishSchedule() {
+    if (!confirm('Publish this schedule? Staff will be able to see it.')) {
+        return;
+    }
+
+    const dateStr = '{{ view_date|date:"Y-m-d" }}';
+
+    fetch('/schedule/api/restaurant/publish/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({
+            date: dateStr
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        alert('Error: ' + error);
+    });
+}
+
+function editShift(shiftId) {
+    // TODO: Implement edit modal in future enhancement
+    alert('Edit shift functionality will be implemented in a future enhancement. Shift ID: ' + shiftId);
+}
+</script>
+{% endblock %}

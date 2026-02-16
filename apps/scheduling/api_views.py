@@ -8,9 +8,9 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_exempt
 import json
 
-from apps.scheduling.models import TourSession, DailySchedule, TourTimeSlot
+from apps.scheduling.models import TourSession, DailySchedule, TourTimeSlot, DailyRestaurantSchedule, StaffShift, RestaurantStaff
 from apps.guides.models import Guide
-from apps.scheduling.services import SchedulingService
+from apps.scheduling.services import SchedulingService, RestaurantSchedulingService
 
 
 @staff_member_required
@@ -406,6 +406,307 @@ def publish_schedule(request):
         return JsonResponse({
             'success': False,
             'error': f'No schedule found for {date_str}'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+# ============================================================================
+# Restaurant Staff Scheduling API Endpoints (Phase 5)
+# ============================================================================
+
+@staff_member_required
+@require_http_methods(["POST"])
+def restaurant_auto_assign(request):
+    """
+    Run auto-assignment algorithm for restaurant staff.
+    Generates optimal shift pattern for a specific date.
+    """
+    try:
+        data = json.loads(request.body)
+        date_str = data.get('date')
+        pattern = data.get('pattern', 'mixed')  # 'mixed' or 'all_8h'
+
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # Get or create daily schedule
+        daily_schedule, created = DailyRestaurantSchedule.objects.get_or_create(date=date_obj)
+
+        # Run auto-scheduler
+        service = RestaurantSchedulingService()
+        results = service.auto_schedule_day(daily_schedule, pattern=pattern)
+
+        total_assigned = results['kitchen_assigned'] + results['serving_assigned']
+
+        return JsonResponse({
+            'success': True,
+            'assigned_count': total_assigned,
+            'kitchen_assigned': results['kitchen_assigned'],
+            'serving_assigned': results['serving_assigned'],
+            'total_staff': results['total_staff'],
+            'unfillable_count': results['unfillable_count'],
+            'errors': results.get('errors', []),
+            'message': f"Assigned {results['kitchen_assigned']} kitchen and {results['serving_assigned']} serving staff (total: {results['total_staff']} staff)"
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def restaurant_clear_all(request):
+    """
+    Clear all staff shift assignments for a specific date.
+    """
+    try:
+        data = json.loads(request.body)
+        date_str = data.get('date')
+
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # Get daily schedule
+        daily_schedule = DailyRestaurantSchedule.objects.get(date=date_obj)
+
+        # Delete all shifts
+        StaffShift.objects.filter(daily_schedule=daily_schedule).delete()
+
+        # Unpublish
+        daily_schedule.is_published = False
+        daily_schedule.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'All shift assignments cleared'
+        })
+
+    except DailyRestaurantSchedule.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Schedule not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def restaurant_publish(request):
+    """
+    Publish restaurant schedule after validation.
+    Makes schedule visible to staff.
+    """
+    try:
+        data = json.loads(request.body)
+        date_str = data.get('date')
+
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        daily_schedule = DailyRestaurantSchedule.objects.get(date=date_obj)
+        service = RestaurantSchedulingService()
+
+        # Validate before publishing
+        can_publish, errors = service.can_publish_schedule(daily_schedule)
+
+        if can_publish:
+            from django.utils import timezone
+            daily_schedule.is_published = True
+            daily_schedule.published_at = timezone.now()
+            daily_schedule.save()
+
+            return JsonResponse({
+                'success': True,
+                'message': 'Schedule published successfully'
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Cannot publish: ' + '; '.join(errors),
+                'errors': errors
+            }, status=400)
+
+    except DailyRestaurantSchedule.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Schedule not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def restaurant_assign_shift(request):
+    """
+    Assign or update staff member for a specific shift.
+    """
+    try:
+        data = json.loads(request.body)
+        shift_id = data.get('shift_id')
+        staff_id = data.get('staff_id')  # Can be None to unassign
+
+        shift = StaffShift.objects.get(id=shift_id)
+
+        if staff_id:
+            staff = RestaurantStaff.objects.get(id=staff_id)
+
+            # Validate: Check if staff is already assigned on this day
+            existing_shifts = StaffShift.objects.filter(
+                daily_schedule=shift.daily_schedule,
+                staff=staff
+            ).exclude(id=shift_id)
+
+            if existing_shifts.exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': f'{staff.user.get_full_name()} is already assigned to another shift on this day'
+                }, status=400)
+
+            shift.staff = staff
+        else:
+            shift.staff = None
+
+        shift.save()
+
+        return JsonResponse({
+            'success': True,
+            'shift_id': shift.id,
+            'staff_name': shift.staff.user.get_full_name() if shift.staff else None
+        })
+
+    except StaffShift.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Shift not found'
+        }, status=404)
+    except RestaurantStaff.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Staff member not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@staff_member_required
+@require_http_methods(["GET"])
+def restaurant_schedule_data(request, date_str):
+    """
+    Get full schedule data as JSON for a specific date.
+    """
+    try:
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        daily_schedule = DailyRestaurantSchedule.objects.get(date=date_obj)
+        service = RestaurantSchedulingService()
+
+        # Get shifts
+        shifts = StaffShift.objects.filter(daily_schedule=daily_schedule).select_related('staff__user')
+
+        # Get summary
+        summary = service.get_schedule_summary(daily_schedule)
+
+        # Get validation
+        validation = service.validate_coverage(daily_schedule)
+
+        shifts_data = []
+        for shift in shifts:
+            shifts_data.append({
+                'id': shift.id,
+                'staff_id': shift.staff.id if shift.staff else None,
+                'staff_name': shift.staff.user.get_full_name() if shift.staff else None,
+                'staff_type': shift.staff.staff_type if shift.staff else None,
+                'start_time': shift.start_time.strftime('%H:%M'),
+                'end_time': shift.end_time.strftime('%H:%M'),
+                'duration_hours': shift.duration_hours,
+                'is_full_day': shift.is_full_day
+            })
+
+        return JsonResponse({
+            'success': True,
+            'date': date_str,
+            'is_published': daily_schedule.is_published,
+            'shifts': shifts_data,
+            'summary': summary,
+            'validation': validation
+        })
+
+    except DailyRestaurantSchedule.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Schedule not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+
+@staff_member_required
+@require_http_methods(["GET"])
+def restaurant_export_csv(request, date_str):
+    """
+    Export restaurant staff schedule as CSV.
+    """
+    import csv
+    from django.http import HttpResponse
+
+    try:
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        daily_schedule = DailyRestaurantSchedule.objects.get(date=date_obj)
+        shifts = StaffShift.objects.filter(daily_schedule=daily_schedule).select_related('staff__user').order_by('start_time')
+
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="restaurant_schedule_{date_str}.csv"'
+
+        # Add BOM for Excel
+        response.write('\ufeff')
+
+        writer = csv.writer(response)
+
+        # Header
+        writer.writerow(['Staff Name', 'Staff Type', 'Start Time', 'End Time', 'Duration (hours)', 'Shift Type'])
+
+        # Data rows
+        for shift in shifts:
+            writer.writerow([
+                shift.staff.user.get_full_name() if shift.staff else 'Unassigned',
+                shift.staff.get_staff_type_display() if shift.staff else '',
+                shift.start_time.strftime('%I:%M %p'),
+                shift.end_time.strftime('%I:%M %p'),
+                shift.duration_hours,
+                'Full-day (8h)' if shift.is_full_day else 'Half-day (4h)'
+            ])
+
+        return response
+
+    except DailyRestaurantSchedule.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Schedule not found'
         }, status=404)
     except Exception as e:
         return JsonResponse({
