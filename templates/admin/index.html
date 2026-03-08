@@ -13,5 +13,22 @@
     </div>
 </div>
 
+<!-- Account Settings -->
+<div class="module" style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid #667eea;">
+    <h2 style="margin-top: 0; color: #333;">👤 Account Settings</h2>
+    <ul style="list-style: none; padding: 0; margin: 0;">
+        <li style="padding: 8px 0;">
+            <a href="{% url 'admin:password_change' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">
+                🔑 Change Password
+            </a>
+        </li>
+        <li style="padding: 8px 0;">
+            <a href="{% url 'main_landing' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">
+                🏠 View Site
+            </a>
+        </li>
+    </ul>
+</div>
+
 {{ block.super }}
 {% endblock %}

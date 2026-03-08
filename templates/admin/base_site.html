@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+<style>
+    /* Hide Django's default user tools */
+    #user-tools {
+        display: none;
+    }
+
+    /* Remove default Django header margins */
+    #header {
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Custom navbar matching Bootstrap navbar style */
+    .custom-navbar {
+        background-color: #dc3545; /* Bootstrap danger red - matching "Open Admin Panel" button */
+        padding: 0.5rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 0;
+        height: 60px; /* Exact height matching Bootstrap navbar with fixed-top */
+    }
+
+    .custom-navbar-left {
+        display: flex;
+        gap: 0;
+        align-items: center;
+        height: 100%;
+    }
+
+    .custom-navbar a {
+        color: rgba(255,255,255,0.55);
+        text-decoration: none;
+        padding: 0.5rem 1rem;
+        transition: color 0.15s ease-in-out;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
+
+    .custom-navbar a:hover {
+        color: rgba(255,255,255,0.75);
+    }
+
+    .custom-navbar .navbar-brand {
+        font-size: 1.25rem;
+        font-weight: bold;
+        color: #fff;
+        margin-right: 1rem;
+    }
+
+    .custom-navbar-right {
+        display: flex;
+        align-items: center;
+    }
+
+    /* Admin branding section styling */
+    #branding {
+        margin: 0;
+        padding: 1rem 1.5rem;
+        background: #417690;
+    }
+
+    #site-name {
+        margin: 0;
+    }
+
+    #site-name a {
+        color: #f5dd5d;
+        font-size: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block header %}
+<!-- Custom navigation bar at the very top -->
+<div class="custom-navbar">
+    <div class="custom-navbar-left">
+        <a href="{% url 'main_landing' %}" class="navbar-brand">Jiak99 Planner</a>
+        <a href="{% url 'schedule_dashboard' %}">📅 Schedule Management</a>
+        <a href="{% url 'admin:index' %}">⚙️ Admin</a>
+    </div>
+    <div class="custom-navbar-right">
+        <a href="{% url 'admin:logout' %}">Logout</a>
+    </div>
+</div>
+
+<!-- Django admin header/banner below -->
+<div id="branding">
+    {% block branding %}
+    <h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
+    {% endblock %}
+</div>
+
+{% block nav-global %}{% endblock %}
+{% endblock %}

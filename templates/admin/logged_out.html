@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+
+<div id="content-main">
+<p style="font-size: 18px; margin-bottom: 20px;">{% trans "Thanks for spending some quality time with the Web site today." %}</p>
+<p><a href="{% url 'main_landing' %}" class="button" style="background: #667eea; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">Go to Main Page</a></p>
+<p><a href="{% url 'admin:index' %}" style="color: #667eea; text-decoration: none; font-weight: 500;">{% trans 'Log in again' %}</a></p>
+</div>
+
+{% endblock %}
